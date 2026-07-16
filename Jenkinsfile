@@ -16,7 +16,6 @@ pipeline {
     stages {
 
 
-
         stage('Preparación del Entorno') {
 
 
@@ -41,8 +40,6 @@ pipeline {
 
 
 
-
-
         stage('Instalación de Dependencias') {
 
 
@@ -61,39 +58,13 @@ pipeline {
 
 
 
-
-
-        stage('Pruebas Unitarias') {
-
-
-            steps {
-
-
-                echo 'Ejecutando pruebas unitarias...'
-
-
-                bat 'npm test'
-
-
-            }
-
-
-        }
-
-
-
-
-
-
-        stage('Pruebas de Integración Docker Compose') {
+        stage('Levantar Servicios Docker') {
 
 
             steps {
 
 
-
-                echo 'Levantando servicios Docker...'
-
+                echo 'Iniciando PostgreSQL, Redis y App...'
 
 
                 bat """
@@ -103,11 +74,7 @@ pipeline {
                 """
 
 
-
-
-
-                echo 'Esperando servicios...'
-
+                echo 'Esperando servicios disponibles...'
 
 
                 timeout(time: 60, unit: 'SECONDS') {
@@ -123,85 +90,60 @@ pipeline {
                 }
 
 
-
-
-
-                echo 'Limpiando Redis antes de pruebas...'
-
-
-
-                bat """
-
-                docker compose -f %DOCKER_COMPOSE_FILE% exec -T redis redis-cli FLUSHALL
-
-                """
-
-
-
-
-
-
-
-                echo 'Ejecutando pruebas dentro del contenedor...'
-
-
-
-
-
-                bat """
-
-                docker compose -f %DOCKER_COMPOSE_FILE% exec -T app npm test
-
-                """
-
-
-
             }
-
-
-
-
-
-            post {
-
-
-
-                always {
-
-
-
-                    echo 'Limpiando contenedores...'
-
-
-
-
-
-                    bat """
-
-                    docker compose -f %DOCKER_COMPOSE_FILE% down -v
-
-                    """
-
-
-
-                }
-
-
-
-            }
-
 
 
         }
 
 
 
+        stage('Pruebas Unitarias') {
 
+
+            steps {
+
+
+                echo 'Ejecutando pruebas unitarias...'
+
+
+                bat """
+
+                npm test -- tests/unit
+
+                """
+
+
+            }
+
+
+        }
+
+
+
+        stage('Pruebas de Integración Docker') {
+
+
+            steps {
+
+
+                echo 'Ejecutando pruebas dentro del contenedor...'
+
+
+                bat """
+
+                docker compose -f %DOCKER_COMPOSE_FILE% exec -T app npm test -- tests/integration
+
+                """
+
+
+            }
+
+
+        }
 
 
 
         stage('Prueba End-to-End') {
-
 
 
             when {
@@ -213,26 +155,13 @@ pipeline {
             }
 
 
-
-
-
             steps {
-
 
 
                 echo 'Ejecutando pruebas E2E...'
 
 
-
-
-
                 bat """
-
-                docker compose -f %DOCKER_COMPOSE_FILE% up -d
-
-
-                timeout /t 10
-
 
 
                 curl http://localhost:3000/health
@@ -241,35 +170,6 @@ pipeline {
                 """
 
 
-
-            }
-
-
-
-
-
-
-            post {
-
-
-
-                always {
-
-
-
-                    bat """
-
-
-                    docker compose -f %DOCKER_COMPOSE_FILE% down -v
-
-
-
-                    """
-
-
-                }
-
-
             }
 
 
@@ -277,13 +177,7 @@ pipeline {
 
 
 
-
-
     }
-
-
-
-
 
 
 
@@ -291,50 +185,45 @@ pipeline {
 
 
 
-        success {
+        always {
 
 
+            echo 'Limpiando contenedores Docker...'
 
-            echo '✅ Pipeline completado exitosamente'
 
+            bat """
+
+
+            docker compose -f %DOCKER_COMPOSE_FILE% down -v
+
+
+            """
 
 
         }
 
 
 
+        success {
+
+
+            echo 'Pipeline completado exitosamente'
+
+
+        }
 
 
 
         failure {
 
 
-
-            echo '❌ Pipeline falló. Revisar logs'
-
+            echo 'Pipeline falló. Revisar logs'
 
 
         }
-
-
-
-
-
-
-        always {
-
-
-
-            echo '🧹 Limpieza final completada'
-
-
-
-        }
-
 
 
     }
-
 
 
 }
