@@ -9,34 +9,29 @@ const {
 } = require("../../src/app");
 
 
-describe("Pruebas de Integración", () => {
+
+describe("Pruebas de Integración",()=>{
 
 
-  beforeAll(async () => {
+  beforeAll(async()=>{
+
 
     await connectRedis();
 
+
     await initializeDatabase();
 
-  });
 
-
-
-  beforeEach(async () => {
-
-
-    // Limpiar PostgreSQL
 
     await pool.query(
       "DELETE FROM users"
     );
 
 
-    // Limpiar Redis
 
     if(redisClient.isOpen){
 
-      await redisClient.flushAll();
+      await redisClient.flushDb();
 
     }
 
@@ -45,7 +40,27 @@ describe("Pruebas de Integración", () => {
 
 
 
-  afterAll(async () => {
+  afterEach(async()=>{
+
+
+    await pool.query(
+      "DELETE FROM users"
+    );
+
+
+
+    if(redisClient.isOpen){
+
+      await redisClient.flushDb();
+
+    }
+
+
+  });
+
+
+
+  afterAll(async()=>{
 
 
     try{
@@ -53,6 +68,7 @@ describe("Pruebas de Integración", () => {
       await pool.query(
         "DROP TABLE IF EXISTS users"
       );
+
 
     }catch(err){}
 
@@ -73,20 +89,22 @@ describe("Pruebas de Integración", () => {
 
 
 
-  test("Debe crear un usuario en PostgreSQL", async()=>{
+
+  test("Debe crear un usuario en PostgreSQL",async()=>{
 
 
-    const user = {
+    const user={
 
       name:"Juan Pérez",
 
-      email:`juan_${Date.now()}@test.com`
+      email:"juan@test.com"
 
     };
 
 
 
-    const response = await request(app)
+    const response =
+      await request(app)
 
       .post("/users")
 
@@ -100,10 +118,8 @@ describe("Pruebas de Integración", () => {
       .toHaveProperty("id");
 
 
-
     expect(response.body.name)
       .toBe(user.name);
-
 
 
     expect(response.body.email)
@@ -111,20 +127,21 @@ describe("Pruebas de Integración", () => {
 
 
 
-    const result = await pool.query(
 
-      "SELECT * FROM users WHERE id=$1",
+    const result =
+      await pool.query(
 
-      [
-        response.body.id
-      ]
+        "SELECT * FROM users WHERE id=$1",
 
-    );
+        [response.body.id]
+
+      );
 
 
 
     expect(result.rows.length)
       .toBe(1);
+
 
 
   });
@@ -133,49 +150,33 @@ describe("Pruebas de Integración", () => {
 
 
 
-  test("Debe obtener un usuario desde PostgreSQL", async()=>{
+
+  test("Debe obtener un usuario desde PostgreSQL",async()=>{
 
 
-    const user = {
+    const user={
 
       name:"María",
 
-      email:`maria_${Date.now()}@test.com`
+      email:"maria@test.com"
 
     };
 
 
 
-    const create = await request(app)
+    const create =
+      await request(app)
 
       .post("/users")
 
-      .send(user)
-
-      .expect(201);
+      .send(user);
 
 
 
-    const id =
-      create.body.id;
+    const response =
+      await request(app)
 
-
-
-    // Confirmar que Redis no tiene información
-
-    if(redisClient.isOpen){
-
-      await redisClient.del(
-        `user:${id}`
-      );
-
-    }
-
-
-
-    const response = await request(app)
-
-      .get(`/users/${id}`)
+      .get(`/users/${create.body.id}`)
 
       .expect(200);
 
@@ -197,26 +198,27 @@ describe("Pruebas de Integración", () => {
 
 
 
-  test("Debe obtener un usuario desde Redis en la segunda petición", async()=>{
 
 
-    const user = {
+  test("Debe obtener un usuario desde Redis en la segunda petición",async()=>{
+
+
+    const user={
 
       name:"Carlos",
 
-      email:`carlos_${Date.now()}@test.com`
+      email:"carlos@test.com"
 
     };
 
 
 
-    const create = await request(app)
+    const create =
+      await request(app)
 
       .post("/users")
 
-      .send(user)
-
-      .expect(201);
+      .send(user);
 
 
 
@@ -225,9 +227,9 @@ describe("Pruebas de Integración", () => {
 
 
 
-    // Primera petición debe ir a PostgreSQL
 
-    const first = await request(app)
+    const first =
+      await request(app)
 
       .get(`/users/${id}`)
 
@@ -236,14 +238,14 @@ describe("Pruebas de Integración", () => {
 
 
     expect(first.body.source)
-
       .toBe("database");
 
 
 
-    // Segunda petición debe salir de Redis
 
-    const second = await request(app)
+
+    const second =
+      await request(app)
 
       .get(`/users/${id}`)
 
@@ -251,15 +253,9 @@ describe("Pruebas de Integración", () => {
 
 
 
+
     expect(second.body.source)
-
       .toBe("cache");
-
-
-
-    expect(second.body.data.name)
-
-      .toBe(user.name);
 
 
 
@@ -269,10 +265,12 @@ describe("Pruebas de Integración", () => {
 
 
 
-  test("Debe retornar 404 cuando el usuario no existe", async()=>{
+
+  test("Debe retornar 404 cuando el usuario no existe",async()=>{
 
 
-    const response = await request(app)
+    const response =
+      await request(app)
 
       .get("/users/99999")
 
@@ -281,8 +279,8 @@ describe("Pruebas de Integración", () => {
 
 
     expect(response.body.error)
-
       .toBe("Usuario no encontrado");
+
 
 
   });

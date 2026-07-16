@@ -19,7 +19,7 @@ const pool = new Pool({
   port: process.env.DB_PORT || 5432,
   database: process.env.DB_NAME || "testdb",
   user: process.env.DB_USER || "testuser",
-  password: process.env.DB_PASSWORD || "testpass"
+  password: process.env.DB_PASSWORD || "testpass",
 
 });
 
@@ -30,20 +30,19 @@ const pool = new Pool({
 
 const redisClient = createClient({
 
-  url:
-    `redis://${process.env.REDIS_HOST || "localhost"}:${process.env.REDIS_PORT || 6379}`
+  url: `redis://${process.env.REDIS_HOST || "localhost"}:${
+    process.env.REDIS_PORT || 6379
+  }`
 
 });
 
 
-redisClient.on("error", (err)=>{
+redisClient.on("error", (err) => {
 
-  console.error(
-    "❌ Redis:",
-    err.message
-  );
+  console.error("❌ Redis:", err.message);
 
 });
+
 
 
 async function connectRedis(){
@@ -54,11 +53,10 @@ async function connectRedis(){
 
       await redisClient.connect();
 
-      console.log(
-        "✅ Redis conectado"
-      );
+      console.log("✅ Redis conectado");
 
     }
+
 
   }catch(error){
 
@@ -86,9 +84,7 @@ async function initializeDatabase(){
       CREATE TABLE IF NOT EXISTS users(
 
         id SERIAL PRIMARY KEY,
-
         name VARCHAR(100) NOT NULL,
-
         email VARCHAR(100) UNIQUE NOT NULL
 
       );
@@ -96,9 +92,7 @@ async function initializeDatabase(){
     `);
 
 
-    console.log(
-      "✅ Tabla users lista"
-    );
+    console.log("✅ Tabla users lista");
 
 
   }catch(err){
@@ -144,13 +138,12 @@ app.get("/health", async(req,res)=>{
     timestamp:
       new Date().toISOString(),
 
+
     services:{
 
-      postgres:
-        dbStatus,
+      postgres:dbStatus,
 
-      redis:
-        redisClient.isOpen
+      redis:redisClient.isOpen
 
     }
 
@@ -220,10 +213,12 @@ app.post("/users", async(req,res)=>{
     /*
       IMPORTANTE:
 
-      No guardar en Redis aquí.
+      NO guardar en Redis aquí.
 
-      La primera consulta GET
-      debe salir desde PostgreSQL.
+      La primera petición GET debe
+      consultar PostgreSQL.
+
+      Después GET llenará Redis.
 
     */
 
@@ -271,49 +266,38 @@ app.get("/users/:id", async(req,res)=>{
   try{
 
 
-    if(redisClient.isOpen){
-
-
-      const cached =
-        await redisClient.get(
-          `user:${id}`
-        );
+    const cache =
+      await redisClient.get(
+        `user:${id}`
+      );
 
 
 
-      if(cached){
+    if(cache){
 
 
-        return res.json({
+      return res.json({
 
-          source:
-            "cache",
+        source:
+          "cache",
 
-          data:
-            JSON.parse(cached)
+        data:
+          JSON.parse(cache)
 
-        });
+      });
 
-
-      }
 
     }
 
 
-  }catch(err){
+  }catch(err){}
 
-    console.error(
-      "Error Redis:",
-      err.message
-    );
-
-  }
 
 
 
 
   /*
-      2. Buscar en PostgreSQL
+      2. Buscar PostgreSQL
   */
 
 
@@ -333,15 +317,14 @@ app.get("/users/:id", async(req,res)=>{
 
         `,
 
-        [
-          id
-        ]
+        [id]
 
       );
 
 
 
-    if(result.rows.length === 0){
+
+    if(result.rows.length===0){
 
 
       return res.status(404).json({
@@ -361,31 +344,28 @@ app.get("/users/:id", async(req,res)=>{
 
 
 
+
     /*
-       3. Guardar después
-          de consultar PostgreSQL
+       Guardar solamente después
+       de consultar PostgreSQL
     */
 
 
     try{
 
 
-      if(redisClient.isOpen){
+      await redisClient.set(
 
+        `user:${id}`,
 
-        await redisClient.set(
+        JSON.stringify(user)
 
-          `user:${id}`,
-
-          JSON.stringify(user)
-
-        );
-
-
-      }
+      );
 
 
     }catch(err){}
+
+
 
 
 
@@ -398,6 +378,7 @@ app.get("/users/:id", async(req,res)=>{
         user
 
     });
+
 
 
 
@@ -415,13 +396,16 @@ app.get("/users/:id", async(req,res)=>{
   }
 
 
+
 });
 
 
 
+
 /* ============================
-   Ruta principal
+   Ruta Principal
 ============================ */
+
 
 app.get("/",(req,res)=>{
 
@@ -438,9 +422,11 @@ app.get("/",(req,res)=>{
 
 
 
+
 /* ============================
    Inicio servidor
 ============================ */
+
 
 async function startServer(){
 
@@ -452,14 +438,19 @@ async function startServer(){
 
 
   app.listen(
+
     PORT,
+
     ()=>{
 
       console.log(
+
         `🚀 Servidor iniciado en http://localhost:${PORT}`
+
       );
 
     }
+
   );
 
 
@@ -475,9 +466,6 @@ if(require.main === module){
 
 
 
-/* ============================
-   Exportaciones Jest
-============================ */
 
 module.exports = {
 
