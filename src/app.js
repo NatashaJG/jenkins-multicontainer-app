@@ -4,7 +4,6 @@ const { createClient } = require("redis");
 require("dotenv").config();
 
 const app = express();
-
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
@@ -17,17 +16,12 @@ app.use(express.json());
 const pool = new Pool({
 
   host: process.env.DB_HOST || "localhost",
-
   port: process.env.DB_PORT || 5432,
-
   database: process.env.DB_NAME || "testdb",
-
   user: process.env.DB_USER || "testuser",
-
   password: process.env.DB_PASSWORD || "testpass"
 
 });
-
 
 
 /* ============================
@@ -42,7 +36,7 @@ const redisClient = createClient({
 });
 
 
-redisClient.on("error",(err)=>{
+redisClient.on("error", (err)=>{
 
   console.error(
     "❌ Redis:",
@@ -50,7 +44,6 @@ redisClient.on("error",(err)=>{
   );
 
 });
-
 
 
 async function connectRedis(){
@@ -67,7 +60,6 @@ async function connectRedis(){
 
     }
 
-
   }catch(error){
 
     console.error(
@@ -82,13 +74,12 @@ async function connectRedis(){
 
 
 /* ============================
-   Base de Datos
+   Inicializar Base de Datos
 ============================ */
 
 async function initializeDatabase(){
 
   try{
-
 
     await pool.query(`
 
@@ -112,7 +103,6 @@ async function initializeDatabase(){
 
   }catch(err){
 
-
     console.error(
       "Error inicializando BD:",
       err.message
@@ -125,15 +115,13 @@ async function initializeDatabase(){
 
 
 /* ============================
-   Health
+   Health Check
 ============================ */
 
-app.get("/health",async(req,res)=>{
+app.get("/health", async(req,res)=>{
 
 
-  let postgres=false;
-
-  let redis=false;
+  let dbStatus = false;
 
 
   try{
@@ -142,15 +130,10 @@ app.get("/health",async(req,res)=>{
       "SELECT NOW()"
     );
 
-    postgres=true;
+    dbStatus = true;
 
 
   }catch{}
-
-
-
-  redis =
-    redisClient.isOpen;
 
 
 
@@ -163,9 +146,11 @@ app.get("/health",async(req,res)=>{
 
     services:{
 
-      postgres,
+      postgres:
+        dbStatus,
 
-      redis
+      redis:
+        redisClient.isOpen
 
     }
 
@@ -180,7 +165,7 @@ app.get("/health",async(req,res)=>{
    Crear Usuario
 ============================ */
 
-app.post("/users",async(req,res)=>{
+app.post("/users", async(req,res)=>{
 
 
   const {
@@ -195,7 +180,7 @@ app.post("/users",async(req,res)=>{
     return res.status(400).json({
 
       error:
-      "Nombre y correo son obligatorios"
+        "Nombre y correo son obligatorios"
 
     });
 
@@ -206,8 +191,7 @@ app.post("/users",async(req,res)=>{
   try{
 
 
-    const result =
-      await pool.query(
+    const result = await pool.query(
 
       `
 
@@ -227,21 +211,37 @@ app.post("/users",async(req,res)=>{
     );
 
 
-    res.status(201)
-       .json(result.rows[0]);
+
+    const user =
+      result.rows[0];
+
+
+
+    /*
+      IMPORTANTE:
+
+      No guardar en Redis aquí.
+
+      La primera consulta GET
+      debe salir desde PostgreSQL.
+
+    */
+
+
+
+    res.status(201).json(user);
 
 
 
   }catch(err){
 
 
-    res.status(500)
-       .json({
+    res.status(500).json({
 
-        error:
+      error:
         err.message
 
-       });
+    });
 
 
   }
@@ -255,53 +255,65 @@ app.post("/users",async(req,res)=>{
    Obtener Usuario
 ============================ */
 
-app.get("/users/:id",async(req,res)=>{
+app.get("/users/:id", async(req,res)=>{
 
 
-  const id=req.params.id;
+  const id =
+    req.params.id;
 
 
 
   /*
-     Solo usar Redis cuando existe
-     una caché válida.
+      1. Buscar en Redis
   */
 
 
   try{
 
 
-    const cached =
-      await redisClient.get(
-        `user:${id}`
-      );
+    if(redisClient.isOpen){
+
+
+      const cached =
+        await redisClient.get(
+          `user:${id}`
+        );
 
 
 
-    if(cached){
+      if(cached){
 
 
-      return res.json({
+        return res.json({
 
-        source:
-        "cache",
+          source:
+            "cache",
 
-        data:
-        JSON.parse(cached)
+          data:
+            JSON.parse(cached)
 
-      });
+        });
 
+
+      }
 
     }
 
 
+  }catch(err){
 
-  }catch(err){}
+    console.error(
+      "Error Redis:",
+      err.message
+    );
+
+  }
+
 
 
 
   /*
-      Buscar en PostgreSQL
+      2. Buscar en PostgreSQL
   */
 
 
@@ -311,30 +323,31 @@ app.get("/users/:id",async(req,res)=>{
     const result =
       await pool.query(
 
-      `
+        `
 
-      SELECT *
+        SELECT *
 
-      FROM users
+        FROM users
 
-      WHERE id=$1
+        WHERE id=$1
 
-      `,
+        `,
 
-      [id]
+        [
+          id
+        ]
 
-    );
-
-
-
-    if(result.rows.length===0){
+      );
 
 
-      return res.status(404)
-      .json({
+
+    if(result.rows.length === 0){
+
+
+      return res.status(404).json({
 
         error:
-        "Usuario no encontrado"
+          "Usuario no encontrado"
 
       });
 
@@ -349,28 +362,27 @@ app.get("/users/:id",async(req,res)=>{
 
 
     /*
-       Guardar solamente después
-       de obtener de BD
+       3. Guardar después
+          de consultar PostgreSQL
     */
 
 
     try{
 
 
-      await redisClient.set(
+      if(redisClient.isOpen){
 
-        `user:${id}`,
 
-        JSON.stringify(user),
+        await redisClient.set(
 
-        {
+          `user:${id}`,
 
-          EX:
-          300
+          JSON.stringify(user)
 
-        }
+        );
 
-      );
+
+      }
 
 
     }catch(err){}
@@ -380,10 +392,10 @@ app.get("/users/:id",async(req,res)=>{
     res.json({
 
       source:
-      "database",
+        "database",
 
       data:
-      user
+        user
 
     });
 
@@ -392,11 +404,10 @@ app.get("/users/:id",async(req,res)=>{
   }catch(err){
 
 
-    res.status(500)
-    .json({
+    res.status(500).json({
 
       error:
-      err.message
+        err.message
 
     });
 
@@ -409,7 +420,7 @@ app.get("/users/:id",async(req,res)=>{
 
 
 /* ============================
-   Inicio
+   Ruta principal
 ============================ */
 
 app.get("/",(req,res)=>{
@@ -418,7 +429,7 @@ app.get("/",(req,res)=>{
   res.json({
 
     message:
-    "Aplicación Jenkins MultiContainer funcionando"
+      "Aplicación Jenkins MultiContainer funcionando"
 
   });
 
@@ -427,6 +438,9 @@ app.get("/",(req,res)=>{
 
 
 
+/* ============================
+   Inicio servidor
+============================ */
 
 async function startServer(){
 
@@ -438,15 +452,14 @@ async function startServer(){
 
 
   app.listen(
-
     PORT,
+    ()=>{
 
-    ()=>console.log(
+      console.log(
+        `🚀 Servidor iniciado en http://localhost:${PORT}`
+      );
 
-      `🚀 Servidor iniciado en http://localhost:${PORT}`
-
-    )
-
+    }
   );
 
 
@@ -454,7 +467,7 @@ async function startServer(){
 
 
 
-if(require.main===module){
+if(require.main === module){
 
   startServer();
 
@@ -463,10 +476,10 @@ if(require.main===module){
 
 
 /* ============================
-   Jest
+   Exportaciones Jest
 ============================ */
 
-module.exports={
+module.exports = {
 
   app,
 
