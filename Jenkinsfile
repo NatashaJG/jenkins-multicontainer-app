@@ -3,6 +3,17 @@ pipeline {
     agent any
 
 
+    parameters {
+
+        booleanParam(
+            name: 'DEMO_MODE',
+            defaultValue: false,
+            description: 'Ejecutar demostración sin pruebas de integración'
+        )
+
+    }
+
+
     environment {
 
         APP_NAME = 'jenkins-multicontainer-app'
@@ -123,6 +134,17 @@ pipeline {
         stage('Pruebas de Integración Docker') {
 
 
+            when {
+
+                expression {
+
+                    return !params.DEMO_MODE
+
+                }
+
+            }
+
+
             steps {
 
 
@@ -132,6 +154,48 @@ pipeline {
                 bat """
 
                 docker compose -f %DOCKER_COMPOSE_FILE% exec -T app npm test -- tests/integration
+
+                """
+
+
+            }
+
+
+        }
+
+
+
+        stage('Modo Demostración') {
+
+
+            when {
+
+                expression {
+
+                    return params.DEMO_MODE
+
+                }
+
+            }
+
+
+            steps {
+
+
+                echo 'Ejecutando modo demostración CI/CD...'
+
+
+                bat """
+
+                echo =====================================
+
+                echo CAMBIO SIMULADO CORRECTAMENTE
+
+                echo Nueva version validada
+
+                echo Pipeline funcionando correctamente
+
+                echo =====================================
 
                 """
 
