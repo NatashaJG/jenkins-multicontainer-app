@@ -4,21 +4,30 @@ const { createClient } = require("redis");
 require("dotenv").config();
 
 const app = express();
+
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
+
 
 /* ============================
    PostgreSQL
 ============================ */
 
 const pool = new Pool({
+
   host: process.env.DB_HOST || "localhost",
+
   port: process.env.DB_PORT || 5432,
+
   database: process.env.DB_NAME || "testdb",
+
   user: process.env.DB_USER || "testuser",
-  password: process.env.DB_PASSWORD || "testpass",
+
+  password: process.env.DB_PASSWORD || "testpass"
+
 });
+
 
 
 /* ============================
@@ -26,49 +35,83 @@ const pool = new Pool({
 ============================ */
 
 const redisClient = createClient({
-  url: `redis://${process.env.REDIS_HOST || "localhost"}:${
-    process.env.REDIS_PORT || 6379
-  }`,
-});
 
-redisClient.on("error", (err) => {
-  console.error("❌ Redis:", err.message);
+  url:
+    `redis://${process.env.REDIS_HOST || "localhost"}:${process.env.REDIS_PORT || 6379}`
+
 });
 
 
-async function connectRedis() {
-  try {
-    if (!redisClient.isOpen) {
+redisClient.on("error",(err)=>{
+
+  console.error(
+    "❌ Redis:",
+    err.message
+  );
+
+});
+
+
+
+async function connectRedis(){
+
+  try{
+
+    if(!redisClient.isOpen){
+
       await redisClient.connect();
-      console.log("✅ Redis conectado");
+
+      console.log(
+        "✅ Redis conectado"
+      );
+
     }
-  } catch (error) {
+
+
+  }catch(error){
+
     console.error(
       "Error conectando Redis:",
       error.message
     );
+
   }
+
 }
 
 
+
 /* ============================
-   Inicializar Base de Datos
+   Base de Datos
 ============================ */
 
-async function initializeDatabase() {
-  try {
+async function initializeDatabase(){
+
+  try{
+
 
     await pool.query(`
+
       CREATE TABLE IF NOT EXISTS users(
+
         id SERIAL PRIMARY KEY,
+
         name VARCHAR(100) NOT NULL,
+
         email VARCHAR(100) UNIQUE NOT NULL
+
       );
+
     `);
 
-    console.log("✅ Tabla users lista");
 
-  } catch (err) {
+    console.log(
+      "✅ Tabla users lista"
+    );
+
+
+  }catch(err){
+
 
     console.error(
       "Error inicializando BD:",
@@ -76,58 +119,69 @@ async function initializeDatabase() {
     );
 
   }
+
 }
 
 
+
 /* ============================
-   Health Check
+   Health
 ============================ */
 
-app.get("/health", async (req, res) => {
-
-  let dbStatus = false;
-  let redisStatus = false;
+app.get("/health",async(req,res)=>{
 
 
-  try {
+  let postgres=false;
+
+  let redis=false;
+
+
+  try{
 
     await pool.query(
       "SELECT NOW()"
     );
 
-    dbStatus = true;
-
-  } catch {}
+    postgres=true;
 
 
-  redisStatus = redisClient.isOpen;
+  }catch{}
+
+
+
+  redis =
+    redisClient.isOpen;
+
 
 
   res.json({
 
-    status: "healthy",
+    status:"healthy",
 
     timestamp:
       new Date().toISOString(),
 
-    services: {
+    services:{
 
-      postgres: dbStatus,
+      postgres,
 
-      redis: redisStatus
+      redis
 
     }
 
   });
 
+
 });
+
 
 
 /* ============================
    Crear Usuario
 ============================ */
 
-app.post("/users", async (req, res) => {
+app.post("/users",async(req,res)=>{
+
 
   const {
     name,
@@ -135,27 +189,34 @@ app.post("/users", async (req, res) => {
   } = req.body;
 
 
-  if (!name || !email) {
+
+  if(!name || !email){
 
     return res.status(400).json({
 
       error:
-        "Nombre y correo son obligatorios"
+      "Nombre y correo son obligatorios"
 
     });
 
   }
 
 
-  try {
+
+  try{
 
 
-    const result = await pool.query(
+    const result =
+      await pool.query(
 
       `
+
       INSERT INTO users(name,email)
+
       VALUES($1,$2)
+
       RETURNING *
+
       `,
 
       [
@@ -166,77 +227,67 @@ app.post("/users", async (req, res) => {
     );
 
 
-    const user =
-      result.rows[0];
-
-
-    /*
-      IMPORTANTE:
-      No guardamos en Redis aquí.
-
-      La primera consulta GET debe ir
-      a PostgreSQL y después llenar
-      la caché.
-
-    */
-
-
-    res.status(201).json(user);
+    res.status(201)
+       .json(result.rows[0]);
 
 
 
-  } catch (err) {
+  }catch(err){
 
 
-    res.status(500).json({
+    res.status(500)
+       .json({
 
-      error:
+        error:
         err.message
 
-    });
+       });
 
 
   }
 
+
 });
+
 
 
 /* ============================
    Obtener Usuario
 ============================ */
 
-app.get("/users/:id", async (req, res) => {
+app.get("/users/:id",async(req,res)=>{
 
 
-  const id =
-    req.params.id;
+  const id=req.params.id;
 
 
 
   /*
-      1. Buscar primero en Redis
+     Solo usar Redis cuando existe
+     una caché válida.
   */
 
 
-  try {
+  try{
 
 
-    const cache =
+    const cached =
       await redisClient.get(
         `user:${id}`
       );
 
 
-    if (cache) {
+
+    if(cached){
 
 
       return res.json({
 
         source:
-          "cache",
+        "cache",
 
         data:
-          JSON.parse(cache)
+        JSON.parse(cached)
 
       });
 
@@ -244,40 +295,46 @@ app.get("/users/:id", async (req, res) => {
     }
 
 
-  } catch (err) {}
+
+  }catch(err){}
 
 
 
   /*
-      2. Buscar en PostgreSQL
+      Buscar en PostgreSQL
   */
 
 
-  try {
+  try{
 
 
     const result =
       await pool.query(
 
-        `
-        SELECT *
-        FROM users
-        WHERE id=$1
-        `,
+      `
 
-        [id]
+      SELECT *
 
-      );
+      FROM users
+
+      WHERE id=$1
+
+      `,
+
+      [id]
+
+    );
 
 
 
-    if (result.rows.length === 0) {
+    if(result.rows.length===0){
 
 
-      return res.status(404).json({
+      return res.status(404)
+      .json({
 
         error:
-          "Usuario no encontrado"
+        "Usuario no encontrado"
 
       });
 
@@ -292,46 +349,54 @@ app.get("/users/:id", async (req, res) => {
 
 
     /*
-       Guardar en Redis después
-       de consultar PostgreSQL
+       Guardar solamente después
+       de obtener de BD
     */
 
 
-    try {
+    try{
 
 
       await redisClient.set(
 
         `user:${id}`,
 
-        JSON.stringify(user)
+        JSON.stringify(user),
+
+        {
+
+          EX:
+          300
+
+        }
 
       );
 
 
-    } catch(err){}
+    }catch(err){}
 
 
 
     res.json({
 
       source:
-        "database",
+      "database",
 
       data:
-        user
+      user
 
     });
 
 
 
-  } catch(err){
+  }catch(err){
 
 
-    res.status(500).json({
+    res.status(500)
+    .json({
 
       error:
-        err.message
+      err.message
 
     });
 
@@ -344,16 +409,16 @@ app.get("/users/:id", async (req, res) => {
 
 
 /* ============================
-   Ruta Principal
+   Inicio
 ============================ */
 
-app.get("/", (req,res)=>{
+app.get("/",(req,res)=>{
 
 
   res.json({
 
     message:
-      "Aplicación Jenkins MultiContainer funcionando"
+    "Aplicación Jenkins MultiContainer funcionando"
 
   });
 
@@ -362,9 +427,6 @@ app.get("/", (req,res)=>{
 
 
 
-/* ============================
-   Inicio servidor
-============================ */
 
 async function startServer(){
 
@@ -376,14 +438,15 @@ async function startServer(){
 
 
   app.listen(
+
     PORT,
-    ()=>{
 
-      console.log(
-        `🚀 Servidor iniciado en http://localhost:${PORT}`
-      );
+    ()=>console.log(
 
-    }
+      `🚀 Servidor iniciado en http://localhost:${PORT}`
+
+    )
+
   );
 
 
@@ -391,7 +454,7 @@ async function startServer(){
 
 
 
-if(require.main === module){
+if(require.main===module){
 
   startServer();
 
@@ -400,10 +463,10 @@ if(require.main === module){
 
 
 /* ============================
-   Exportaciones para Jest
+   Jest
 ============================ */
 
-module.exports = {
+module.exports={
 
   app,
 
