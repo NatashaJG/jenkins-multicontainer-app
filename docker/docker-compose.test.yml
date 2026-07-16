@@ -1,0 +1,85 @@
+version: "3.9"
+
+services:
+
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+
+    container_name: jenkins-app
+
+    environment:
+      NODE_ENV: test
+      PORT: 3000
+
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: testdb
+      DB_USER: testuser
+      DB_PASSWORD: testpass
+
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+    ports:
+      - "3000:3000"
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+      redis:
+        condition: service_started
+
+    restart: unless-stopped
+
+    networks:
+      - jenkins-network
+
+
+  postgres:
+
+    image: postgres:15-alpine
+
+    container_name: postgres-db
+
+    environment:
+      POSTGRES_DB: testdb
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: testpass
+
+    ports:
+      - "5432:5432"
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U testuser -d testdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+    restart: unless-stopped
+
+    networks:
+      - jenkins-network
+
+
+  redis:
+
+    image: redis:7-alpine
+
+    container_name: redis-cache
+
+    ports:
+      - "6379:6379"
+
+    restart: unless-stopped
+
+    networks:
+      - jenkins-network
+
+
+networks:
+
+  jenkins-network:
+    driver: bridge

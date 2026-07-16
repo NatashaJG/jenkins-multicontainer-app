@@ -1,0 +1,15 @@
+{
+  "name": "jenkins-multicontainer-app",
+  "version": "1.0.0",
+  "description": "Pipeline CI/CD con Jenkins, Docker Compose, PostgreSQL y Redis",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js",
+    "test": "jest",
+    "test:unit": "jest tests/unit",
+    "test:integration": "jest tests/integration --runInBand",
+    "test:all": "npm run test:unit && npm run test:integration",
+    "coverage": "jest --coverage"
+  }
+}
