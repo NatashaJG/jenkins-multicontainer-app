@@ -11,5 +11,16 @@
     "test:integration": "jest tests/integration --runInBand",
     "test:all": "npm run test:unit && npm run test:integration",
     "coverage": "jest --coverage"
+  },
+  "devDependencies": {
+    "jest": "^30.4.2",
+    "jest-junit": "^17.0.0",
+    "supertest": "^7.2.2"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "pg": "^8.22.0",
+    "redis": "^6.1.0"
   }
 }

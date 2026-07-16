@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="jest tests" tests="4" failures="0" errors="0" time="3.592">
+  <testsuite name="Pruebas de Integración" errors="0" failures="0" skipped="0" timestamp="2026-07-16T20:46:21" time="3.428" tests="4">
+    <testcase classname="Pruebas de Integración Debe crear un usuario en PostgreSQL" name="Pruebas de Integración Debe crear un usuario en PostgreSQL" time="0.212">
+    </testcase>
+    <testcase classname="Pruebas de Integración Debe obtener un usuario desde PostgreSQL" name="Pruebas de Integración Debe obtener un usuario desde PostgreSQL" time="0.113">
+    </testcase>
+    <testcase classname="Pruebas de Integración Debe obtener un usuario desde Redis en la segunda petición" name="Pruebas de Integración Debe obtener un usuario desde Redis en la segunda petición" time="0.135">
+    </testcase>
+    <testcase classname="Pruebas de Integración Debe retornar 404 cuando el usuario no existe" name="Pruebas de Integración Debe retornar 404 cuando el usuario no existe" time="0.063">
+    </testcase>
+  </testsuite>
+</testsuites>

@@ -20,6 +20,7 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD || "testpass",
 });
 
+
 /* ============================
    Redis
 ============================ */
@@ -34,6 +35,7 @@ redisClient.on("error", (err) => {
   console.error("❌ Redis:", err.message);
 });
 
+
 async function connectRedis() {
   try {
     if (!redisClient.isOpen) {
@@ -41,16 +43,21 @@ async function connectRedis() {
       console.log("✅ Redis conectado");
     }
   } catch (error) {
-    console.error("Error conectando Redis:", error.message);
+    console.error(
+      "Error conectando Redis:",
+      error.message
+    );
   }
 }
 
+
 /* ============================
-   Crear tabla si no existe
+   Inicializar Base de Datos
 ============================ */
 
 async function initializeDatabase() {
   try {
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users(
         id SERIAL PRIMARY KEY,
@@ -60,160 +67,352 @@ async function initializeDatabase() {
     `);
 
     console.log("✅ Tabla users lista");
+
   } catch (err) {
-    console.error("Error inicializando BD:", err.message);
+
+    console.error(
+      "Error inicializando BD:",
+      err.message
+    );
+
   }
 }
+
 
 /* ============================
    Health Check
 ============================ */
 
 app.get("/health", async (req, res) => {
+
   let dbStatus = false;
   let redisStatus = false;
 
+
   try {
-    await pool.query("SELECT NOW()");
+
+    await pool.query(
+      "SELECT NOW()"
+    );
+
     dbStatus = true;
+
   } catch {}
+
 
   redisStatus = redisClient.isOpen;
 
+
   res.json({
+
     status: "healthy",
-    timestamp: new Date().toISOString(),
+
+    timestamp:
+      new Date().toISOString(),
+
     services: {
+
       postgres: dbStatus,
-      redis: redisStatus,
-    },
+
+      redis: redisStatus
+
+    }
+
   });
+
 });
 
+
 /* ============================
-   Crear usuario
+   Crear Usuario
 ============================ */
 
 app.post("/users", async (req, res) => {
-  const { name, email } = req.body;
+
+  const {
+    name,
+    email
+  } = req.body;
+
 
   if (!name || !email) {
+
     return res.status(400).json({
-      error: "Nombre y correo son obligatorios",
+
+      error:
+        "Nombre y correo son obligatorios"
+
     });
+
   }
+
 
   try {
+
+
     const result = await pool.query(
-      "INSERT INTO users(name,email) VALUES($1,$2) RETURNING *",
-      [name, email]
+
+      `
+      INSERT INTO users(name,email)
+      VALUES($1,$2)
+      RETURNING *
+      `,
+
+      [
+        name,
+        email
+      ]
+
     );
 
-    const user = result.rows[0];
 
-    try {
-      await redisClient.set(`user:${user.id}`, JSON.stringify(user));
-    } catch (err) {
-      console.log("No fue posible guardar en Redis");
-    }
+    const user =
+      result.rows[0];
+
+
+    /*
+      IMPORTANTE:
+      No guardamos en Redis aquí.
+
+      La primera consulta GET debe ir
+      a PostgreSQL y después llenar
+      la caché.
+
+    */
+
 
     res.status(201).json(user);
+
+
+
   } catch (err) {
+
+
     res.status(500).json({
-      error: err.message,
+
+      error:
+        err.message
+
     });
+
+
   }
+
 });
 
+
 /* ============================
-   Obtener usuario
+   Obtener Usuario
 ============================ */
 
 app.get("/users/:id", async (req, res) => {
-  const id = req.params.id;
 
-  /* Buscar en Redis */
+
+  const id =
+    req.params.id;
+
+
+
+  /*
+      1. Buscar primero en Redis
+  */
+
 
   try {
-    const cache = await redisClient.get(`user:${id}`);
+
+
+    const cache =
+      await redisClient.get(
+        `user:${id}`
+      );
+
 
     if (cache) {
+
+
       return res.json({
-        source: "cache",
-        data: JSON.parse(cache),
+
+        source:
+          "cache",
+
+        data:
+          JSON.parse(cache)
+
       });
+
+
     }
+
+
   } catch (err) {}
 
-  /* Buscar en PostgreSQL */
+
+
+  /*
+      2. Buscar en PostgreSQL
+  */
+
 
   try {
-    const result = await pool.query(
-      "SELECT * FROM users WHERE id=$1",
-      [id]
-    );
+
+
+    const result =
+      await pool.query(
+
+        `
+        SELECT *
+        FROM users
+        WHERE id=$1
+        `,
+
+        [id]
+
+      );
+
+
 
     if (result.rows.length === 0) {
+
+
       return res.status(404).json({
-        error: "Usuario no encontrado",
+
+        error:
+          "Usuario no encontrado"
+
       });
+
+
     }
 
-    const user = result.rows[0];
+
+
+    const user =
+      result.rows[0];
+
+
+
+    /*
+       Guardar en Redis después
+       de consultar PostgreSQL
+    */
+
 
     try {
+
+
       await redisClient.set(
+
         `user:${id}`,
+
         JSON.stringify(user)
+
       );
-    } catch (err) {}
+
+
+    } catch(err){}
+
+
 
     res.json({
-      source: "database",
-      data: user,
+
+      source:
+        "database",
+
+      data:
+        user
+
     });
-  } catch (err) {
+
+
+
+  } catch(err){
+
+
     res.status(500).json({
-      error: err.message,
+
+      error:
+        err.message
+
     });
+
+
   }
+
+
 });
 
+
+
 /* ============================
-   Ruta principal
+   Ruta Principal
 ============================ */
 
-app.get("/", (req, res) => {
+app.get("/", (req,res)=>{
+
+
   res.json({
-    message: "Aplicación Jenkins MultiContainer funcionando",
+
+    message:
+      "Aplicación Jenkins MultiContainer funcionando"
+
   });
+
+
 });
 
+
+
 /* ============================
-   Inicio del servidor
+   Inicio servidor
 ============================ */
 
-async function startServer() {
+async function startServer(){
+
+
   await initializeDatabase();
+
   await connectRedis();
 
-  app.listen(PORT, () => {
-    console.log(`🚀 Servidor iniciado en http://localhost:${PORT}`);
-  });
+
+
+  app.listen(
+    PORT,
+    ()=>{
+
+      console.log(
+        `🚀 Servidor iniciado en http://localhost:${PORT}`
+      );
+
+    }
+  );
+
+
 }
 
-if (require.main === module) {
+
+
+if(require.main === module){
+
   startServer();
+
 }
+
+
 
 /* ============================
-   Exportaciones
+   Exportaciones para Jest
 ============================ */
 
 module.exports = {
+
   app,
+
   pool,
+
   redisClient,
+
   connectRedis,
-  initializeDatabase,
+
+  initializeDatabase
+
 };
