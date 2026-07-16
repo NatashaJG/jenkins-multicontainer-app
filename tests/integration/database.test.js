@@ -24,18 +24,22 @@ describe("Pruebas de Integración", () => {
 
   beforeEach(async () => {
 
-    // Limpiar base de datos antes de cada prueba
+
+    // Limpiar PostgreSQL
+
     await pool.query(
       "DELETE FROM users"
     );
 
 
-    // Limpiar cache Redis antes de cada prueba
-    if (redisClient.isOpen) {
+    // Limpiar Redis
+
+    if(redisClient.isOpen){
 
       await redisClient.flushAll();
 
     }
+
 
   });
 
@@ -44,40 +48,39 @@ describe("Pruebas de Integración", () => {
   afterAll(async () => {
 
 
-    try {
+    try{
 
       await pool.query(
         "DROP TABLE IF EXISTS users"
       );
 
-
-    } catch (err) {}
-
+    }catch(err){}
 
 
-    if (redisClient.isOpen) {
+
+    await pool.end();
+
+
+
+    if(redisClient.isOpen){
 
       await redisClient.quit();
 
     }
 
 
-    await pool.end();
-
-
   });
 
 
 
-
-  test("Debe crear un usuario en PostgreSQL", async () => {
+  test("Debe crear un usuario en PostgreSQL", async()=>{
 
 
     const user = {
 
-      name: "Juan Pérez",
+      name:"Juan Pérez",
 
-      email: "juan@test.com",
+      email:`juan_${Date.now()}@test.com`
 
     };
 
@@ -93,10 +96,14 @@ describe("Pruebas de Integración", () => {
 
 
 
-    expect(response.body).toHaveProperty("id");
+    expect(response.body)
+      .toHaveProperty("id");
+
+
 
     expect(response.body.name)
       .toBe(user.name);
+
 
 
     expect(response.body.email)
@@ -115,6 +122,7 @@ describe("Pruebas de Integración", () => {
     );
 
 
+
     expect(result.rows.length)
       .toBe(1);
 
@@ -125,14 +133,14 @@ describe("Pruebas de Integración", () => {
 
 
 
-  test("Debe obtener un usuario desde PostgreSQL", async () => {
+  test("Debe obtener un usuario desde PostgreSQL", async()=>{
 
 
     const user = {
 
-      name: "María",
+      name:"María",
 
-      email: "maria@test.com",
+      email:`maria_${Date.now()}@test.com`
 
     };
 
@@ -148,14 +156,26 @@ describe("Pruebas de Integración", () => {
 
 
 
-    // Confirmar que Redis está vacío
-    await redisClient.flushAll();
+    const id =
+      create.body.id;
+
+
+
+    // Confirmar que Redis no tiene información
+
+    if(redisClient.isOpen){
+
+      await redisClient.del(
+        `user:${id}`
+      );
+
+    }
 
 
 
     const response = await request(app)
 
-      .get(`/users/${create.body.id}`)
+      .get(`/users/${id}`)
 
       .expect(200);
 
@@ -163,6 +183,7 @@ describe("Pruebas de Integración", () => {
 
     expect(response.body.source)
       .toBe("database");
+
 
 
     expect(response.body.data.name)
@@ -176,14 +197,14 @@ describe("Pruebas de Integración", () => {
 
 
 
-  test("Debe obtener un usuario desde Redis en la segunda petición", async () => {
+  test("Debe obtener un usuario desde Redis en la segunda petición", async()=>{
 
 
     const user = {
 
-      name: "Carlos",
+      name:"Carlos",
 
-      email: "carlos@test.com",
+      email:`carlos_${Date.now()}@test.com`
 
     };
 
@@ -199,14 +220,12 @@ describe("Pruebas de Integración", () => {
 
 
 
-    const id = create.body.id;
+    const id =
+      create.body.id;
 
 
 
-    // Asegurar primera consulta desde BD
-    await redisClient.flushAll();
-
-
+    // Primera petición debe ir a PostgreSQL
 
     const first = await request(app)
 
@@ -217,10 +236,12 @@ describe("Pruebas de Integración", () => {
 
 
     expect(first.body.source)
+
       .toBe("database");
 
 
 
+    // Segunda petición debe salir de Redis
 
     const second = await request(app)
 
@@ -231,7 +252,14 @@ describe("Pruebas de Integración", () => {
 
 
     expect(second.body.source)
+
       .toBe("cache");
+
+
+
+    expect(second.body.data.name)
+
+      .toBe(user.name);
 
 
 
@@ -241,9 +269,7 @@ describe("Pruebas de Integración", () => {
 
 
 
-
-  test("Debe retornar 404 cuando el usuario no existe", async () => {
-
+  test("Debe retornar 404 cuando el usuario no existe", async()=>{
 
 
     const response = await request(app)
@@ -257,7 +283,6 @@ describe("Pruebas de Integración", () => {
     expect(response.body.error)
 
       .toBe("Usuario no encontrado");
-
 
 
   });
